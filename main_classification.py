@@ -106,8 +106,8 @@ def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    dataset_train = build_dataset(partition='train', args=args)
-    dataset_val = build_dataset(partition='val', args=args)
+    dataset_train = build_dataset(partition='train', use_augmentation=True, args=args)
+    dataset_val = build_dataset(partition='val', use_augmentation=False, args=args)
 
     train_labels = dataset_train.labels  #[x["label"] for x in train_dicts]
     train_label_type = [torch.tensor([1.]), torch.tensor([0.])] #list(set(train_labels))

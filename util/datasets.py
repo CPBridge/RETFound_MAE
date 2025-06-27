@@ -16,8 +16,28 @@ from torchvision.datasets import VisionDataset
 # from tqdm import tqdm
 from timm.data.transforms import CenterCropOrPad
 
+
 class CSVDataset(VisionDataset):
-    def __init__(self, csv, partition, transform=None, target_transform=None, return_fname=False):
+    def __init__(
+        self,
+        csv,
+        partition,
+        transform=None,
+        target_transform=None,
+        return_fname=False,
+        center_slice: bool = False,
+        label_source: str = "label",
+    ):
+        """
+
+        center_slice: bool
+            If True, limit to just the central slice. Otherwise include all
+            slice.
+        label_source: str
+            Source of the label. Either "label" (for parkinsons vs controls),
+            or "date", for binarized date of acquisition.
+
+        """
         super(CSVDataset, self).__init__(
             root=None,
             transform=transform,
@@ -36,13 +56,21 @@ class CSVDataset(VisionDataset):
         else:
             partition_df = df
 
+        if center_slice:
+            partition_df = partition_df[
+                partition_df.jpgfile.str.contains("bscan64")
+            ].copy()
+
         self.file_paths = list(partition_df["jpgfile"])
 
-        if "label" in partition_df.keys():
+        if label_source == "label":
             self.labels = [torch.tensor([float(l)]) for l in partition_df["label"]]
-
+        elif label_source == "date":
+            df["date"] = pd.to_datetime(df["date"])
+            cutoff_date = pd["date"].median()
+            self.labels = [torch.tensor([float(d > cutoff_date)]) for d in partition_df["date"]]
         else:
-            self.labels = [torch.tensor([1.0])] * len(self.file_paths)
+            raise ValueError("Unrecognized label source")
 
         assert len(self.file_paths) == len(self.labels), "Mismatch between number of files and labels"
 
@@ -82,21 +110,19 @@ class CSVDataset(VisionDataset):
         return img, label
 
 
-def build_dataset(partition, args, return_fname=False):
+def build_dataset(partition, use_augmentation, args, return_fname=False):
 
-    is_train = partition == "train"
-
-    transform = build_transform(is_train, args)
+    transform = build_transform(use_augmentation, args)
     dataset = CSVDataset(csv=args.csv, partition=partition, transform=transform, return_fname=return_fname)
 
     return dataset
 
 
-def build_transform(is_train, args):
+def build_transform(use_augmentation, args):
     mean = IMAGENET_DEFAULT_MEAN
     std = IMAGENET_DEFAULT_STD
     # train transform
-    if is_train=='train':
+    if use_augmentation:
         # this should always dispatch to transforms_imagenet_train
         transform = create_transform(
             input_size=args.input_size,
